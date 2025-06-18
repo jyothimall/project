@@ -8,15 +8,16 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class javafxmysql extends Application {
+public class javafx extends Application {
 
-    String url = "jdbc:mysql://localhost:3306/jyothi";
-    String user = "root";
-    String password = "password";
+    String url = "jdbc:mysql://localhost:3306/jyothi"; // Your DB
+    String user = "root"; // Your user
+    String password = "password"; // Your password
 
     public static void main(String[] args) {
         launch(args);
@@ -24,7 +25,7 @@ public class javafxmysql extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        Label message = new Label("SQL CRUD Operations (Mysql DB)");
+        Label message = new Label("SQL CRUD Operations (MySQL DB)");
         Button createBtn = new Button("Create Table");
         Button insertBtn = new Button("Insert Values");
         Button updateBtn = new Button("Update Table");
@@ -45,7 +46,7 @@ public class javafxmysql extends Application {
         root.setStyle("-fx-padding: 30; -fx-alignment: center;");
         Scene scene = new Scene(root, 400, 550);
         primaryStage.setScene(scene);
-        primaryStage.setTitle("JavaFX Oracle DB Manager");
+        primaryStage.setTitle("JavaFX MySQL DB Manager");
         primaryStage.show();
     }
 
@@ -67,149 +68,123 @@ public class javafxmysql extends Application {
         }
     }
 
-    private List<String> getPrimaryKeyColumns(Connection conn, String tableName) throws SQLException {
-        List<String> pkCols = new ArrayList<>();
-        DatabaseMetaData metaData = conn.getMetaData();
-        try (ResultSet pkRs = metaData.getPrimaryKeys(null, null, tableName)) {
-            while (pkRs.next()) {
-                pkCols.add(pkRs.getString("COLUMN_NAME"));
-            }
-        }
-        return pkCols;
-    }
-
-    private void showSelectWindow() {
+    private void showInsertWindow() {
         Stage stage = new Stage();
         TextField tableField = new TextField();
-        Button loadBtn = new Button("Load Table");
+        Button loadBtn = new Button("Load Table Structure");
 
-        VBox layout = new VBox(10, new Label("Enter Table Name:"), tableField, loadBtn);
+        VBox layout = new VBox(10, new Label("Table Name:"), tableField, loadBtn);
         layout.setStyle("-fx-padding: 20; -fx-alignment: center;");
-        stage.setScene(new Scene(layout, 300, 200));
-        stage.setTitle("Select Records");
+        stage.setScene(new Scene(layout, 400, 150));
+        stage.setTitle("Insert Values");
         stage.show();
 
         loadBtn.setOnAction(ev -> {
-            String tableName = tableField.getText().trim().toUpperCase();
+            String tableName = tableField.getText().trim();
             if (tableName.isEmpty()) {
                 showAlert(Alert.AlertType.ERROR, "Table name is required.");
                 return;
             }
 
-            Stage selectStage = new Stage();
-            VBox contentLayout = new VBox(10);
-            contentLayout.setStyle("-fx-padding: 10;");
-
-            TableView<RowData> tableView = new TableView<>();
-            tableView.setEditable(true);
-            Button deleteSelectedBtn = new Button("Delete Selected Rows");
-            contentLayout.getChildren().addAll(new ScrollPane(tableView), deleteSelectedBtn);
-
-            List<String> columnNames = new ArrayList<>();
-            int[] columnCount = {0};
-
-            ObservableList<RowData> data = FXCollections.observableArrayList();
-
             try (Connection conn = getConnection();
-                 Statement stmt = conn.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY)) {
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM " + tableName + " LIMIT 1")) {
 
-                ResultSet rs = stmt.executeQuery("SELECT * FROM " + tableName);
                 ResultSetMetaData meta = rs.getMetaData();
-                columnCount[0] = meta.getColumnCount();
+                int columnCount = meta.getColumnCount();
 
-                TableColumn<RowData, Boolean> selectCol = new TableColumn<>("Select");
-                selectCol.setCellValueFactory(param -> param.getValue().selected);
-                selectCol.setCellFactory(CheckBoxTableCell.forTableColumn(selectCol));
-                tableView.getColumns().add(selectCol);
+                List<TextField> inputFields = new ArrayList<>();
+                List<String> columnNames = new ArrayList<>();
+                VBox formLayout = new VBox(10);
+                formLayout.setStyle("-fx-padding: 20;");
 
-                for (int i = 1; i <= columnCount[0]; i++) {
+                for (int i = 1; i <= columnCount; i++) {
                     String colName = meta.getColumnName(i);
                     columnNames.add(colName);
-                    final int colIndex = i - 1;
-                    TableColumn<RowData, String> col = new TableColumn<>(colName);
-                    col.setCellValueFactory(cellData -> cellData.getValue().values.get(colIndex));
-                    tableView.getColumns().add(col);
+                    TextField input = new TextField();
+                    input.setPromptText("Enter value for " + colName);
+                    inputFields.add(input);
+
+                    formLayout.getChildren().add(new HBox(10, new Label(colName + ":"), input));
                 }
 
-                while (rs.next()) {
-                    List<SimpleStringProperty> rowValues = new ArrayList<>();
-                    for (int i = 1; i <= columnCount[0]; i++) {
-                        rowValues.add(new SimpleStringProperty(rs.getString(i)));
-                    }
-                    data.add(new RowData(rowValues));
-                }
+                Button insertBtn = new Button("Insert");
+                formLayout.getChildren().add(insertBtn);
 
-                tableView.setItems(data);
+                Stage insertStage = new Stage();
+                insertStage.setScene(new Scene(new ScrollPane(formLayout), 450, 400));
+                insertStage.setTitle("Insert into " + tableName);
+                insertStage.show();
 
-                // Fetch primary keys once here
-                List<String> pkColumns = getPrimaryKeyColumns(conn, tableName);
+                insertBtn.setOnAction(e -> {
+                    StringBuilder placeholders = new StringBuilder();
+                    StringBuilder columnPart = new StringBuilder();
 
-                deleteSelectedBtn.setOnAction(e -> {
-                    List<RowData> selectedRows = new ArrayList<>();
-                    for (RowData row : data) {
-                        if (row.selected.get()) selectedRows.add(row);
-                    }
-
-                    if (selectedRows.isEmpty()) {
-                        showAlert(Alert.AlertType.WARNING, "No rows selected.");
-                        return;
+                    for (int i = 0; i < columnCount; i++) {
+                        columnPart.append(columnNames.get(i));
+                        placeholders.append("?");
+                        if (i < columnCount - 1) {
+                            columnPart.append(", ");
+                            placeholders.append(", ");
+                        }
                     }
 
-                    if (pkColumns.isEmpty()) {
-                        showAlert(Alert.AlertType.ERROR, "No primary key found for the table. Cannot safely delete rows.");
-                        return;
-                    }
+                    String sql = "INSERT INTO " + tableName + " (" + columnPart + ") VALUES (" + placeholders + ")";
 
-                    try (Connection delConn = getConnection();
-                         Statement delStmt = delConn.createStatement()) {
+                    try (Connection insertConn = getConnection();
+                         PreparedStatement ps = insertConn.prepareStatement(sql)) {
 
-                        int deletedCount = 0;
-
-                        for (RowData row : selectedRows) {
-                            StringBuilder where = new StringBuilder();
-                            for (int i = 0; i < columnCount[0]; i++) {
-                                String column = columnNames.get(i);
-                                if (!pkColumns.contains(column)) continue; // Only primary keys
-
-                                String value = row.values.get(i).get();
-
-                                if (where.length() > 0) where.append(" AND ");
-
-                                if (value == null || value.equalsIgnoreCase("null") || value.isEmpty()) {
-                                    where.append(column).append(" IS NULL");
-                                } else if (value.matches("-?\\d+(\\.\\d+)?")) {
-                                    where.append(column).append("=").append(value);
-                                } else {
-                                    where.append(column).append("='").append(value.replace("'", "''")).append("'");
-                                }
-                            }
-
-                            if (where.length() == 0) {
-                                // No pk info - skip this row or handle accordingly
-                                continue;
-                            }
-
-                            String delQuery = "DELETE FROM " + tableName + " WHERE " + where;
-                            int affected = delStmt.executeUpdate(delQuery);
-                            if (affected > 0) deletedCount++;
+                        for (int i = 0; i < columnCount; i++) {
+                            String val = inputFields.get(i).getText().trim();
+                            ps.setString(i + 1, val.isEmpty() ? null : val);
                         }
 
-                        showAlert(Alert.AlertType.INFORMATION, deletedCount + " row(s) deleted.");
-                        selectStage.close();
+                        ps.executeUpdate();
+                        showAlert(Alert.AlertType.INFORMATION, "Record inserted successfully.");
+                        insertStage.close();
+                        stage.close();
 
                     } catch (SQLException ex) {
-                        showAlert(Alert.AlertType.ERROR, ex.getMessage());
+                        showAlert(Alert.AlertType.ERROR, "SQL Error: " + ex.getMessage());
                     }
                 });
 
             } catch (SQLException ex) {
-                showAlert(Alert.AlertType.ERROR, ex.getMessage());
+                showAlert(Alert.AlertType.ERROR, "SQL Error: " + ex.getMessage());
+            }
+        });
+    }
+
+    private void showUpdateWindow() {
+        showAlert(Alert.AlertType.INFORMATION, "Update window not implemented yet.");
+    }
+
+    private void showSimpleTableActionWindow(String action, String sqlStart) {
+        Stage stage = new Stage();
+        TextField tableField = new TextField();
+        Button executeBtn = new Button(action + " Table");
+
+        VBox layout = new VBox(10, new Label("Enter Table Name:"), tableField, executeBtn);
+        layout.setStyle("-fx-padding: 20; -fx-alignment: center;");
+        stage.setScene(new Scene(layout, 300, 200));
+        stage.setTitle(action + " Table");
+        stage.show();
+
+        executeBtn.setOnAction(e -> {
+            String tableName = tableField.getText().trim();
+            if (tableName.isEmpty()) {
+                showAlert(Alert.AlertType.ERROR, "Table name is required.");
                 return;
             }
 
-            selectStage.setScene(new Scene(contentLayout, 800, 600));
-            selectStage.setTitle("Table: " + tableName);
-            selectStage.show();
+            String sql = sqlStart + tableName;
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate(sql);
+                showAlert(Alert.AlertType.INFORMATION, action + " successful.");
+                stage.close();
+            } catch (SQLException ex) {
+                showAlert(Alert.AlertType.ERROR, ex.getMessage());
+            }
         });
     }
 
@@ -278,67 +253,132 @@ public class javafxmysql extends Application {
         });
     }
 
-    private void showInsertWindow() {
+    private List<String> getPrimaryKeyColumns(Connection conn, String tableName) throws SQLException {
+        List<String> pkCols = new ArrayList<>();
+        DatabaseMetaData metaData = conn.getMetaData();
+        try (ResultSet pkRs = metaData.getPrimaryKeys(null, null, tableName)) {
+            while (pkRs.next()) {
+                pkCols.add(pkRs.getString("COLUMN_NAME"));
+            }
+        }
+        return pkCols;
+    }
+
+    private void showSelectWindow() {
         Stage stage = new Stage();
         TextField tableField = new TextField();
-        Button loadBtn = new Button("Load Table Structure");
+        Button loadBtn = new Button("Load Table");
 
-        VBox layout = new VBox(10, new Label("Table Name:"), tableField, loadBtn);
+        VBox layout = new VBox(10, new Label("Enter Table Name:"), tableField, loadBtn);
         layout.setStyle("-fx-padding: 20; -fx-alignment: center;");
-        stage.setScene(new Scene(layout, 400, 150));
-        stage.setTitle("Insert Values");
+        stage.setScene(new Scene(layout, 300, 200));
+        stage.setTitle("Select Records");
         stage.show();
 
         loadBtn.setOnAction(ev -> {
-            String tableName = tableField.getText().trim().toUpperCase();
+            String tableName = tableField.getText().trim();
             if (tableName.isEmpty()) {
                 showAlert(Alert.AlertType.ERROR, "Table name is required.");
                 return;
             }
 
+            Stage selectStage = new Stage();
+            VBox contentLayout = new VBox(10);
+            contentLayout.setStyle("-fx-padding: 10;");
+
+            TableView<RowData> tableView = new TableView<>();
+            tableView.setEditable(true);
+            Button deleteSelectedBtn = new Button("Delete Selected Rows");
+            contentLayout.getChildren().addAll(new ScrollPane(tableView), deleteSelectedBtn);
+
+            List<String> columnNames = new ArrayList<>();
+            int[] columnCount = {0};
+
+            ObservableList<RowData> data = FXCollections.observableArrayList();
+
             try (Connection conn = getConnection();
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT * FROM " + tableName + "LIMIT 1")) {
+                 Statement stmt = conn.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY)) {
 
+                ResultSet rs = stmt.executeQuery("SELECT * FROM " + tableName);
                 ResultSetMetaData meta = rs.getMetaData();
-                int columnCount = meta.getColumnCount();
+                columnCount[0] = meta.getColumnCount();
 
-                List<TextField> inputFields = new ArrayList<>();
-                VBox formLayout = new VBox(10);
-                formLayout.setStyle("-fx-padding: 20;");
+                TableColumn<RowData, Boolean> selectCol = new TableColumn<>("Select");
+                selectCol.setCellValueFactory(param -> param.getValue().selected);
+                selectCol.setCellFactory(CheckBoxTableCell.forTableColumn(selectCol));
+                tableView.getColumns().add(selectCol);
 
-                for (int i = 1; i <= columnCount; i++) {
+                for (int i = 1; i <= columnCount[0]; i++) {
                     String colName = meta.getColumnName(i);
-                    String colType = meta.getColumnTypeName(i);
-                    TextField input = new TextField();
-                    input.setPromptText("Enter value for " + colName);
-                    inputFields.add(input);
-
-                    formLayout.getChildren().add(new HBox(10, new Label(colName + " (" + colType + "):"), input));
+                    columnNames.add(colName);
+                    final int colIndex = i - 1;
+                    TableColumn<RowData, String> col = new TableColumn<>(colName);
+                    col.setCellValueFactory(cellData -> cellData.getValue().values.get(colIndex));
+                    tableView.getColumns().add(col);
                 }
 
-                Button insertBtn = new Button("Insert");
-                formLayout.getChildren().add(insertBtn);
-
-                Stage insertStage = new Stage();
-                insertStage.setScene(new Scene(new ScrollPane(formLayout), 450, 400));
-                insertStage.setTitle("Insert into " + tableName);
-                insertStage.show();
-
-                insertBtn.setOnAction(e -> {
-                    StringBuilder query = new StringBuilder("INSERT INTO ").append(tableName).append(" VALUES (");
-                    for (int i = 0; i < inputFields.size(); i++) {
-                        String val = inputFields.get(i).getText().trim();
-                        query.append("'").append(val.replace("'", "''")).append("'");
-                        if (i < inputFields.size() - 1) query.append(", ");
+                while (rs.next()) {
+                    List<SimpleStringProperty> rowValues = new ArrayList<>();
+                    for (int i = 1; i <= columnCount[0]; i++) {
+                        rowValues.add(new SimpleStringProperty(rs.getString(i)));
                     }
-                    query.append(")");
+                    data.add(new RowData(rowValues));
+                }
 
-                    try (Statement insertStmt = conn.createStatement()) {
-                        insertStmt.executeUpdate(query.toString());
-                        showAlert(Alert.AlertType.INFORMATION, "Record inserted successfully.");
-                        insertStage.close();
-                        stage.close();
+                tableView.setItems(data);
+
+                List<String> pkColumns = getPrimaryKeyColumns(conn, tableName);
+
+                deleteSelectedBtn.setOnAction(e -> {
+                    List<RowData> selectedRows = new ArrayList<>();
+                    for (RowData row : data) {
+                        if (row.selected.get()) selectedRows.add(row);
+                    }
+
+                    if (selectedRows.isEmpty()) {
+                        showAlert(Alert.AlertType.WARNING, "No rows selected.");
+                        return;
+                    }
+
+                    if (pkColumns.isEmpty()) {
+                        showAlert(Alert.AlertType.ERROR, "No primary key found. Cannot delete.");
+                        return;
+                    }
+
+                    try (Connection delConn = getConnection();
+                         Statement delStmt = delConn.createStatement()) {
+
+                        int deletedCount = 0;
+
+                        for (RowData row : selectedRows) {
+                            StringBuilder where = new StringBuilder();
+                            for (int i = 0; i < columnCount[0]; i++) {
+                                String column = columnNames.get(i);
+                                if (!pkColumns.contains(column)) continue;
+
+                                String value = row.values.get(i).get();
+
+                                if (where.length() > 0) where.append(" AND ");
+
+                                if (value == null || value.equalsIgnoreCase("null") || value.isEmpty()) {
+                                    where.append(column).append(" IS NULL");
+                                } else if (value.matches("-?\\d+(\\.\\d+)?")) {
+                                    where.append(column).append("=").append(value);
+                                } else {
+                                    where.append(column).append("='").append(value.replace("'", "''")).append("'");
+                                }
+                            }
+
+                            if (where.length() == 0) continue;
+
+                            String delQuery = "DELETE FROM " + tableName + " WHERE " + where;
+                            int affected = delStmt.executeUpdate(delQuery);
+                            if (affected > 0) deletedCount++;
+                        }
+
+                        showAlert(Alert.AlertType.INFORMATION, deletedCount + " row(s) deleted.");
+                        selectStage.close();
+
                     } catch (SQLException ex) {
                         showAlert(Alert.AlertType.ERROR, ex.getMessage());
                     }
@@ -346,41 +386,12 @@ public class javafxmysql extends Application {
 
             } catch (SQLException ex) {
                 showAlert(Alert.AlertType.ERROR, ex.getMessage());
-            }
-        });
-    }
-
-    private void showUpdateWindow() {
-        // Similar to Insert, implement update record window if needed
-        showAlert(Alert.AlertType.INFORMATION, "Update window not implemented yet.");
-    }
-
-    private void showSimpleTableActionWindow(String action, String sqlStart) {
-        Stage stage = new Stage();
-        TextField tableField = new TextField();
-        Button executeBtn = new Button(action + " Table");
-
-        VBox layout = new VBox(10, new Label("Enter Table Name:"), tableField, executeBtn);
-        layout.setStyle("-fx-padding: 20; -fx-alignment: center;");
-        stage.setScene(new Scene(layout, 300, 200));
-        stage.setTitle(action + " Table");
-        stage.show();
-
-        executeBtn.setOnAction(e -> {
-            String tableName = tableField.getText().trim().toUpperCase();
-            if (tableName.isEmpty()) {
-                showAlert(Alert.AlertType.ERROR, "Table name is required.");
                 return;
             }
 
-            String sql = sqlStart + tableName;
-            try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
-                stmt.executeUpdate(sql);
-                showAlert(Alert.AlertType.INFORMATION, action + " successful.");
-                stage.close();
-            } catch (SQLException ex) {
-                showAlert(Alert.AlertType.ERROR, ex.getMessage());
-            }
+            selectStage.setScene(new Scene(contentLayout, 800, 600));
+            selectStage.setTitle("Table: " + tableName);
+            selectStage.show();
         });
     }
 }
