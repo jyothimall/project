@@ -15,9 +15,9 @@ import java.util.List;
 
 public class javafx extends Application {
 
-    String url = "jdbc:mysql://localhost:3306/jyothi"; // Your DB
-    String user = "root"; // Your user
-    String password = "password"; // Your password
+    String url = "jdbc:mysql://localhost:3306/jyothi";
+    String user = "root";
+    String password = "password";
 
     public static void main(String[] args) {
         launch(args);
